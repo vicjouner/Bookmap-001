@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bookmap Pro - deploy script</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 24px 16px 64px;
+  background: #0a0e17; color: #e5e7eb;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.wrap { max-width: 900px; margin: 0 auto; }
+h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: .5px; }
+.sub { color: #9ca3af; font-size: 13px; margin: 0 0 24px; line-height: 1.6; }
+.card {
+  background: #111827; border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px; margin-bottom: 20px; overflow: hidden;
+}
+.chead {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 14px; background: rgba(255,255,255,.03);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.cname { font-size: 14px; font-weight: 700; flex: 1; min-width: 160px; }
+.cdesc { font-size: 11px; color: #6b7280; width: 100%; }
+button, a.btn {
+  font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+  border-radius: 8px; padding: 8px 14px; border: 1px solid transparent;
+  text-decoration: none; display: inline-block; white-space: nowrap;
+}
+.copy { background: #3b82f6; color: #fff; }
+.copy:hover { background: #2f6fd0; }
+.dl { background: rgba(255,255,255,.06); color: #e5e7eb; border-color: rgba(255,255,255,.15); }
+.dl:hover { background: rgba(255,255,255,.12); }
+pre {
+  margin: 0; padding: 16px; overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px; line-height: 1.6; color: #d1d5db;
+  max-height: 60vh; overflow-y: auto;
+}
+.ok { color: #10b981; font-size: 11px; font-weight: 700; display: none; }
+.steps {
+  background: #111827; border: 1px solid rgba(59,130,246,.3);
+  border-radius: 12px; padding: 18px; margin-bottom: 24px;
+}
+.steps h2 { font-size: 14px; margin: 0 0 12px; color: #60a5fa; }
+.steps ol { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.9; }
+.steps code {
+  background: rgba(255,255,255,.08); padding: 2px 6px;
+  border-radius: 4px; font-size: 12px;
+}
+.note { font-size: 12px; color: #f59e0b; margin-top: 14px; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Bookmap Pro - deploy files</h1>
+  <p class="sub">Tap <strong>Copy</strong> on a file, then paste it wherever you need it.
+     Nothing here is executed by this page.</p>
+
+  <div class="steps">
+    <h2>How to deploy</h2>
+    <ol>
+      <li>Copy <code>deploy.sh</code> below.</li>
+      <li>Save it on the server as <code>/root/bookmap/deploy.sh</code></li>
+      <li>Terminal: <code>cd /root/bookmap &amp;&amp; ./deploy.sh</code></li>
+      <li>Enter your GitHub username, then paste a
+          <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">personal access token</a>
+          when it asks for a password.</li>
+      <li>Open the settings link the script prints, set
+          Source: <em>Deploy from a branch</em>, branch <code>main</code>,
+          folder <code>/ (root)</code>, Save.</li>
+      <li>Wait 1-2 minutes, then open
+          <code>https://&lt;you&gt;.github.io/&lt;repo&gt;/</code> on your phone.</li>
+    </ol>
+    <p class="note">A token is not your account password. Create one at
+      github.com/settings/tokens (classic, tick <em>repo</em>). Only paste it
+      into your own terminal, never into a chat or a website form.</p>
+  </div>
+
+  <div class="card">  <div class="chead">    <div class="cname">deploy.sh</div>    <button class="copy" data-target="s3669449855012476122">Copy</button>    <a class="btn dl" href="deploy.sh" download>Download</a>    <span class="ok" id="s3669449855012476122-ok">Copied</span>    <div class="cdesc">Deploy to GitHub (run this one)</div>  </div>  <pre id="s3669449855012476122">#!/usr/bin/env bash
+# Deploy the dashboard to GitHub Pages.
+#
+# Copy-paste this ONE line into your terminal:
+#     cd /root/bookmap &amp;&amp; ./deploy.sh
+#
+# It asks for your GitHub username and a token, pushes, then prints the
+# GitHub Pages settings steps.
+
+set -euo pipefail
+
+REPO_DIR=&quot;$(cd &quot;$(dirname &quot;${BASH_SOURCE[0]}&quot;)&quot; &amp;&amp; pwd)&quot;
+cd &quot;$REPO_DIR&quot;
+
+echo &quot;==================================================&quot;
+echo &quot;  GitHub Pages deploy&quot;
+echo &quot;==================================================&quot;
+echo
+
+command -v git &gt;/dev/null 2&gt;&amp;1 || { echo &quot;error: git is not installed&quot; &gt;&amp;2; exit 1; }
+[[ -d .git ]] || { echo &quot;error: $REPO_DIR is not a git repo&quot; &gt;&amp;2; exit 1; }
+
+# ---- Username: argument, env var, or prompt -----------------------------
+USER=&quot;${1:-${GITHUB_USER:-}}&quot;
+if [[ -z &quot;$USER&quot; ]]; then
+    read -r -p &quot;Your GitHub username (e.g. dasun): &quot; USER
+fi
+[[ -n &quot;$USER&quot; ]] || { echo &quot;error: username is required&quot; &gt;&amp;2; exit 1; }
+
+# ---- Repo name: argument, env var, or prompt ----------------------------
+NAME=&quot;${2:-${REPO_NAME:-bookmap-pro}}&quot;
+read -r -p &quot;Repository name [$NAME]: &quot; ANSWER || true
+[[ -n &quot;$ANSWER&quot; ]] &amp;&amp; NAME=&quot;$ANSWER&quot;
+
+# ---- Branch: GitHub Pages is happiest with &quot;main&quot; ----------------------
+BRANCH=&quot;$(git branch --show-current || true)&quot;
+[[ -n &quot;$BRANCH&quot; ]] || BRANCH=main
+if [[ &quot;$BRANCH&quot; != &quot;main&quot; ]]; then
+    echo &quot;==&gt; renaming branch $BRANCH -&gt; main&quot;
+    git branch -M main
+    BRANCH=main
+fi
+
+REMOTE=&quot;https://github.com/$USER/$NAME.git&quot;
+
+echo
+echo &quot;  username : $USER&quot;
+echo &quot;  repo     : $NAME&quot;
+echo &quot;  branch   : $BRANCH&quot;
+echo &quot;  remote   : $REMOTE&quot;
+echo
+
+# ---- Committer identity is required even on a fresh repo ---------------
+[[ -n &quot;$(git config user.name)&quot; ]] || git config user.name &quot;$USER&quot;
+[[ -n &quot;$(git config user.email)&quot; ]] || git config user.email &quot;$USER@users.noreply.github.com&quot;
+
+# ---- Commit anything outstanding so nothing is left behind --------------
+if [[ -n &quot;$(git status --porcelain)&quot; ]]; then
+    echo &quot;==&gt; committing pending changes&quot;
+    git add -A
+    git commit -m &quot;Update dashboard&quot;
+fi
+
+# ---- Wire up the remote -------------------------------------------------
+if git remote get-url origin &gt;/dev/null 2&gt;&amp;1; then
+    echo &quot;==&gt; origin already set, repointing it&quot;
+    git remote set-url origin &quot;$REMOTE&quot;
+else
+    echo &quot;==&gt; adding origin&quot;
+    git remote add origin &quot;$REMOTE&quot;
+fi
+
+# ---- Push ---------------------------------------------------------------
+echo
+echo &quot;==&gt; pushing to $REMOTE&quot;
+echo &quot;    If asked for a password, paste a GitHub token instead.&quot;
+echo &quot;    Create one: https://github.com/settings/tokens  (classic, scope: repo)&quot;
+echo
+git push -u origin &quot;$BRANCH&quot;
+
+# ---- Pages instructions -------------------------------------------------
+cat &lt;&lt;EOF
+
+==================================================
+  Pushed. Now switch GitHub Pages on.
+==================================================
+
+  1. Open  https://github.com/$USER/$NAME/settings/pages
+  2. Build and deployment -&gt; Source: &quot;Deploy from a branch&quot;
+  3. Branch: $BRANCH     Folder: / (root)
+  4. Save, then wait 1-2 minutes
+
+  Live at:  https://$USER.github.io/$NAME/
+
+Open that link on your phone. The MEXC gate and the domain
+lock are both removed, so it works on any host.
+EOF
+</pre></div><div class="card">  <div class="chead">    <div class="cname">bookmap-standalone.html</div>    <button class="copy" data-target="s6229898805708759955">Copy</button>    <a class="btn dl" href="bookmap-standalone.html" download>Download</a>    <span class="ok" id="s6229898805708759955-ok">Copied</span>    <div class="cdesc">Single-file dashboard (for your phone)</div>  </div>  <pre id="s6229898805708759955">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no&quot;&gt;
+    &lt;title&gt;Bookmap Pro | Standalone&lt;/title&gt;
+    &lt;script src=&quot;https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js&quot;&gt;&lt;/script&gt;
+    &lt;style&gt;
+        /* 🎨 BASE THEME (Extracted from style.css) */
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #111827;
+            --bg-card: rgba(17, 24, 39, 0.8);
+            --border: rgba(75, 85, 99, 0.3);
+            --text-primary: #f9fafb;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-orange: #f59e0b;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: &#x27;Inter&#x27;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, sans-serif;
+            background: #000;
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 🚀 MODAL OVERRIDES FOR STANDALONE */
+        .modal-content {
+            width: 100vw !important;
+            height: 100vh !important;
+            background: #000 !important;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        #heatmapModal.pro-mode .modal-content {
+            padding: 0 !important;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 10px;
+        }
+
+        /* Timeframe Buttons */
+        .tf-btn {
+            padding: 4px 10px;
+            font-size: 10px;
+            border-radius: 6px;
+            background: none;
+            color: #888;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tf-btn.active { background: #3b82f6; color: #fff; }
+        .tf-btn:hover:not(.active) { background: rgba(255,255,255,0.05); }
+
+        /* Controls */
+        input[type=&quot;range&quot;] { accent-color: var(--accent-blue); }
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            color: white;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        /* Pro Toolbar */
+        .pro-toolbar {
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-60px);
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 8px 24px;
+            border-radius: 50px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            z-index: 10001;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            opacity: 0;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+        }
+        .pro-mode:hover .pro-toolbar { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+        /* Dashboard &amp; Canvases */
+        #heatmapDashboard {
+            flex: 1;
+            display: flex;
+            width: 100%;
+            gap: 2px;
+            background: #000;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+            min-height: 0; /* Important for flex child */
+        }
+
+        .canvas-container { 
+            position: relative; 
+            flex: 1; 
+            overflow: hidden; 
+            display: flex;
+            flex-direction: column;
+        }
+        .dom-sidebar {
+            width: 180px;
+            background: #0a0a0a;
+            border-left: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        /* Footer */
+        #bottom-axis {
+            height: 26px;
+            background: #090d14;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            cursor: ew-resize;
+            width: 100%;
+        }
+        #bottom-axis canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Footer */
+        #heatmapFooter {
+            margin-top: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 5px;
+        }
+
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        /* 📱 MOBILE OPTIMIZATION */
+        @media (max-width: 768px) {
+            .modal-content { padding: 0; } /* Full screen feel */
+            .modal-header { 
+                gap: 5px; 
+                margin-bottom: 0; 
+                padding: 10px;
+                background: rgba(10, 14, 23, 0.9);
+                z-index: 1001;
+            }
+            
+            #mobileMenuBtn { display: block !important; }
+            #secondaryControls { 
+                display: none !important; 
+                position: absolute;
+                top: 70px;
+                right: 10px;
+                background: rgba(15, 23, 42, 0.95);
+                backdrop-filter: blur(15px);
+                padding: 20px;
+                border-radius: 16px;
+                border: 1px solid rgba(255,255,255,0.15);
+                flex-direction: column;
+                z-index: 10002;
+                align-items: flex-start !important;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                gap: 15px;
+            }
+            #secondaryControls.active { display: flex !important; }
+            
+            /* Hide the tiny sliders in header on mobile */
+            .header-sliders { display: none !important; }
+            
+            /* Prevent iOS auto-zoom on inputs */
+            #heatmapPairBadge, #tickInput { 
+                font-size: 16px !important; 
+                padding: 6px !important; 
+            }
+            #tickInput { width: 50px !important; }
+            
+            /* Show GO button on mobile */
+            #headerGoBtn {
+                display: inline-flex !important;
+                align-items: center;
+                justify-content: center;
+                background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-size: 12px;
+                font-weight: 900;
+                cursor: pointer;
+                letter-spacing: 1px;
+                box-shadow: 0 2px 8px rgba(59,130,246,0.45);
+                transition: transform 0.1s, box-shadow 0.1s;
+                touch-action: manipulation;
+            }
+            #headerGoBtn:active { transform: scale(0.93); box-shadow: none; }
+
+            /* Coin Search Popover */
+            #mobileCoinSearch {
+                position: absolute;
+                bottom: 70px;
+                left: 10px;
+                right: 10px;
+                background: rgba(10, 14, 23, 0.98);
+                backdrop-filter: blur(24px);
+                border: 1px solid rgba(59, 130, 246, 0.35);
+                border-radius: 20px;
+                padding: 20px;
+                display: none;
+                flex-direction: column;
+                gap: 16px;
+                z-index: 10002;
+                box-shadow: 0 16px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(59,130,246,0.15);
+            }
+            #mobileCoinSearch .coin-search-title {
+                font-size: 11px;
+                font-weight: 900;
+                color: #3b82f6;
+                letter-spacing: 2px;
+                text-transform: uppercase;
+            }
+            #mobileCoinSearch .coin-input-row {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+            }
+            #mobileCoinInput {
+                flex: 1;
+                background: rgba(255,255,255,0.07);
+                border: 1px solid rgba(59,130,246,0.4);
+                border-radius: 10px;
+                color: #fff;
+                font-size: 18px;
+                font-weight: 800;
+                padding: 12px 16px;
+                outline: none;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                caret-color: #3b82f6;
+            }
+            #mobileCoinInput::placeholder { color: rgba(255,255,255,0.25); font-size: 14px; font-weight: 400; letter-spacing: 0; }
+            #mobileCoinInput:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
+            #mobileCoinGoBtn {
+                background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+                color: #fff;
+                border: none;
+                border-radius: 10px;
+                padding: 12px 20px;
+                font-size: 14px;
+                font-weight: 900;
+                cursor: pointer;
+                letter-spacing: 1px;
+                box-shadow: 0 4px 15px rgba(59,130,246,0.45);
+                transition: transform 0.1s;
+            }
+            #mobileCoinGoBtn:active { transform: scale(0.95); }
+            #mobileCoinSearch .quick-pairs {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            #mobileCoinSearch .quick-pairs span {
+                font-size: 10px;
+                font-weight: 700;
+                color: rgba(255,255,255,0.4);
+                letter-spacing: 1px;
+                align-self: center;
+            }
+            .quick-pair-btn {
+                background: rgba(255,255,255,0.06);
+                border: 1px solid rgba(255,255,255,0.12);
+                border-radius: 8px;
+                color: #e2e8f0;
+                font-size: 12px;
+                font-weight: 800;
+                padding: 8px 14px;
+                cursor: pointer;
+                letter-spacing: 0.5px;
+            }
+            .quick-pair-btn:active { background: rgba(59,130,246,0.3); border-color: #3b82f6; color: #fff; }
+            #mobileCoinSearchClose {
+                background: rgba(239,68,68,0.12);
+                border: 1px solid rgba(239,68,68,0.25);
+                border-radius: 10px;
+                color: #ef4444;
+                font-size: 13px;
+                font-weight: 800;
+                padding: 10px;
+                cursor: pointer;
+                letter-spacing: 1px;
+            }
+            
+            .tf-btn { padding: 6px 10px; font-size: 11px; }
+            
+            /* Show only essential header items */
+            .mobile-hide { display: none !important; }
+            
+            #heatmapFooter { 
+                display: none; /* Hide footer on mobile to save space for toolbar */
+            }
+
+        } /* End of original mobile optimization */
+
+        /* UI Toggle Button */
+        #uiToggleBtn {
+            position: absolute;
+            bottom: 80px;
+            right: 20px;
+            width: 36px;
+            height: 36px;
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            color: #fff;
+            display: none; /* Hidden on desktop */
+            al
